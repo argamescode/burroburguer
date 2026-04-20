@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BurroBurguer - Adventure</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+    html, body {
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      font-family: 'Arial Black', 'Arial', sans-serif;
+    }
+    #game-wrapper {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #game-area {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 80px;
+      overflow: hidden;
+      background: #d4a574;
+    }
+    #floor {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image:
+        linear-gradient(90deg, rgba(139,90,43,0.3) 1px, transparent 1px),
+        linear-gradient(rgba(139,90,43,0.3) 1px, transparent 1px);
+      background-size: 60px 60px;
+      background-color: #e8d5b7;
+    }
+    #floor::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image:
+        repeating-conic-gradient(#d4a574 0deg 90deg, #c49a6c 90deg 180deg, #d4a574 180deg 270deg, #c49a6c 270deg 360deg);
+      background-size: 80px 80px;
+      opacity: 0.6;
+    }
+    #kitchen {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 60px;
+      background: #696969;
+      border: 4px solid #4a4a4a;
+      border-radius: 0 0 10px 10px;
+    }
+    #kitchen::after {
+      content: 'COCINA';
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #ccc;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .entity {
+      position: absolute;
+      z-index: 10;
+      filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
+    }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      z-index: 20;
+    }
+    .hud-item {
+      color: white;
+      font-size: 25px;
+      text-shadow: 2px 2px 0 #000;
+    }
+    .hud-item span { color: #ffeb3b; }
+    #timer { color: #ff6b6b; font-weight: bold; }
+    #ui-bar {
+      height: 80px;
+      background: linear-gradient(180deg, #8b4513 0%, #5d2f0d 100%);
+      border-top: 4px solid #a0522d;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 20px;
+    }
+    .control-btn {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(145deg, #ff6b6b 0%, #ee5a5a 100%);
+      border: 3px solid #8b0000;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: white;
+      text-shadow: 1px 1px 0 #000;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.3);
+    }
+    .control-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .d-pad { display: flex; gap: 5px; }
+    .message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(145deg, #ff6b6b 0%, #ee5a5a 100%);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: bold;
+      text-align: center;
+      z-index: 100;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+      border: 4px solid #8b0000;
+      text-shadow: 2px 2px 0 #8b0000;
+    }
+    .message button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      background: linear-gradient(145deg, #4caf50 0%, #45a049 100%);
+      color: white;
+      border: 3px solid #2e7d32;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: bold;
+      text-shadow: 1px 1px 0 #000;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+
+    /* Transformation animation */
+    @keyframes transformPulse {
+      0%   { transform: scale(1) rotate(0deg); opacity: 1; }
+      25%  { transform: scale(1.4) rotate(-10deg); opacity: 0.8; }
+      50%  { transform: scale(0.8) rotate(10deg); opacity: 0.6; }
+      75%  { transform: scale(1.3) rotate(-5deg); opacity: 0.9; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    .transforming {
+      animation: transformPulse 0.5s ease-in-out;
+    }
+
+    /* Particle burst */
+    .particle {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 50;
+      animation: particleFly 0.6s ease-out forwards;
+    }
+    @keyframes particleFly {
+      0%   { transform: translate(0,0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+    }
+
+    @media (max-width: 600px) {
+      #ui-bar { height: 100px; padding: 0 10px; }
+      .control-btn { width: 55px; height: 55px; font-size: 24px; }
+      .hud-item { font-size: 12px; }
+    }
+    @media (max-height: 500px) {
+      #ui-bar { height: 60px; }
+      .control-btn { width: 40px; height: 40px; font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-area">
+    <div id="floor"></div>
+    <div id="kitchen"></div>
+    <div id="hud">
+      <div class="hud-item">🍔 BurroBurguer</div>
+      <div class="hud-item">LVL: <span id="level">1</span> | TIME: <span id="timer">60.0s</span> | SCORE: <span id="score">0</span></div>
+    </div>
+    <div id="player" class="entity"></div>
+    <div id="donkey" class="entity"></div>
+    <div id="message" class="message" style="display: none;"></div>
+    <div id="countdown" style="display: none;"></div>
+  </div>
+  <div id="ui-bar">
+    <div class="d-pad">
+      <div class="control-btn" data-dir="up">▲</div>
+    </div>
+    <div class="d-pad">
+      <div class="control-btn" data-dir="left">◀</div>
+      <div class="control-btn" data-dir="down">▼</div>
+      <div class="control-btn" data-dir="right">▶</div>
+    </div>
+  </div>
+
+  <script>
+    // ─── CONSTANTS ────────────────────────────────────────────────────────────
+    const COLLISION_RADIUS_FACTOR  = 2.5;
+    const SPAWN_SAFE_ZONE          = 120;   // px radius around center kept clear of obstacles
+    const OBSTACLE_SPACING         = 45;    // min gap between obstacle edges
+    const CORNER_THRESHOLD         = 50;    // px from edge considered "near corner"
+    const DETECTION_BASE           = 200;   // px — kept for reference only
+    const KEY_PENALTY_MS           = 500;   // ms penalty per key press
+    const TIME_LIMIT_S             = 60;    // seconds per round
+    const NUM_OBSTACLES            = 4;
+    const TABLE_W                  = 40 * 1.5;
+    const TABLE_H                  = 25 * 1.5;
+    const DONKEY_EXTRA_SCALE       = 1.25;
+    const SPRITE_SCALE             = 1.5;
+
+    // ─── LEVEL PALETTES ───────────────────────────────────────────────────────
+    const LEVEL_PALETTES = [
+      { floor: '#e8d5b7', checker1: '#d4a574', checker2: '#c49a6c', table: '#8b4513', kitchen: '#696969' },
+      { floor: '#f5e6d3', checker1: '#e8c4a0', checker2: '#d4a574', table: '#a0522d', kitchen: '#5a5a5a' },
+      { floor: '#e0d5c5', checker1: '#c9b8a0', checker2: '#b8a890', table: '#654321', kitchen: '#4a4a4a' },
+      { floor: '#d4e5d0', checker1: '#a8c9a0', checker2: '#98b990', table: '#556b2f', kitchen: '#3d5c3d' },
+      { floor: '#e5d4e0', checker1: '#c9a8c0', checker2: '#b898b0', table: '#6b2f55', kitchen: '#4a3a4a' },
+      { floor: '#d0e0e5', checker1: '#a0c0c9', checker2: '#90b0b8', table: '#2f556b', kitchen: '#3a4a4a' },
+      { floor: '#f0e5d0', checker1: '#e8d4a0', checker2: '#d8c490', table: '#8b7355', kitchen: '#5a5a4a' },
+      { floor: '#e5e0d5', checker1: '#c9c0b8', checker2: '#b8b0a8', table: '#4a4a4a', kitchen: '#2a2a2a' },
+    ];
+
+    // ─── DOM REFS ─────────────────────────────────────────────────────────────
+    const gameArea   = document.getElementById('game-area');
+    const playerEl   = document.getElementById('player');
+    const donkeyEl   = document.getElementById('donkey');
+    const messageEl  = document.getElementById('message');
+    const scoreEl    = document.getElementById('score');
+    const timerEl    = document.getElementById('timer');
+    const levelEl    = document.getElementById('level');
+    const countdownEl= document.getElementById('countdown');
+
+    // ─── MUTABLE GAME STATE ───────────────────────────────────────────────────
+    let GAME_WIDTH  = 0;
+    let GAME_HEIGHT = 0;
+    let PLAYER_SIZE = 50;
+    let DONKEY_SIZE = 55;
+    let PLAYER_SPEED = 5;
+    let DONKEY_SPEED = 4;
+
+    let gameState = {
+      player:      { x: 50, y: 50, direction: 'start' },
+      donkey:      { x: 200, y: 150, direction: 'left' },
+      level:       1,
+      score:       0,
+      totalTime:   0,
+      keyPresses:  0,
+      isCaught:    false,
+      gameActive:  false,
+      elapsedTime: 0,
+      lastPlayerDirection: 'start',
+      donkeyLastDirectionChange: 0,
+    };
+
+    /** Cached obstacles for the current round — rebuilt once per reset */
+    let cachedObstacles = [];
+
+    let startTime     = 0;
+    let timerInterval = null;
+    let keys          = {};
+
+    // ─── DIMENSIONS ──────────────────────────────────────────────────────────
+    function updateDimensions() {
+      const rect = gameArea.getBoundingClientRect();
+      GAME_WIDTH  = rect.width;
+      GAME_HEIGHT = rect.height;
+      PLAYER_SIZE = Math.max(45, Math.min(60, GAME_WIDTH * 0.1));
+      DONKEY_SIZE = Math.max(50, Math.min(65, GAME_WIDTH * 0.12));
+    }
+
+    // ─── LEVEL COLORS ────────────────────────────────────────────────────────
+    function applyLevelColors() {
+      const palette = LEVEL_PALETTES[(gameState.level - 1) % LEVEL_PALETTES.length];
+      document.getElementById('floor').style.backgroundColor = palette.floor;
+
+      let styleEl = document.getElementById('dynamic-styles');
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'dynamic-styles';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = `
+        #floor::before {
+          background-image: repeating-conic-gradient(
+            ${palette.checker1} 0deg 90deg,
+            ${palette.checker2} 90deg 180deg,
+            ${palette.checker1} 180deg 270deg,
+            ${palette.checker2} 270deg 360deg
+          ) !important;
+        }
+        .dynamic-obstacle          { background: ${palette.table} !important; }
+        .dynamic-obstacle > div    { background: ${palette.checker2} !important; }
+        #kitchen                   { background: ${palette.kitchen} !important; }
+      `;
+    }
+
+    // ─── OBSTACLE GENERATION (called once per round) ─────────────────────────
+    function buildObstacles() {
+      const margin   = 60;
+      const gridSize = Math.ceil(Math.sqrt(NUM_OBSTACLES));
+      const cellW    = (GAME_WIDTH  - margin * 2) / gridSize;
+      const cellH    = (GAME_HEIGHT - margin * 2) / gridSize;
+      const centerX  = GAME_WIDTH  / 2;
+      const centerY  = GAME_HEIGHT / 2;
+      const result   = [];
+
+      for (let row = 0; row < gridSize && result.length < NUM_OBSTACLES; row++) {
+        for (let col = 0; col < gridSize && result.length < NUM_OBSTACLES; col++) {
+          const x = margin + col * cellW + (cellW - TABLE_W) / 2;
+          const y = margin + row * cellH + (cellH - TABLE_H) / 2;
+          const dist = Math.hypot(x + TABLE_W / 2 - centerX, y + TABLE_H / 2 - centerY);
+          if (dist > SPAWN_SAFE_ZONE) {
+            result.push({ x, y, width: TABLE_W, height: TABLE_H });
+          }
+        }
+      }
+
+      // Fill remaining slots randomly
+      let attempts = 0;
+      while (result.length < NUM_OBSTACLES && attempts < 200) {
+        attempts++;
+        const x = margin + Math.random() * (GAME_WIDTH  - margin * 2 - TABLE_W);
+        const y = margin + Math.random() * (GAME_HEIGHT - margin * 2 - TABLE_H);
+        const dist = Math.hypot(x + TABLE_W / 2 - centerX, y + TABLE_H / 2 - centerY);
+        if (dist <= SPAWN_SAFE_ZONE) continue;
+
+        const overlaps = result.some(obs =>
+          x < obs.x + obs.width  + OBSTACLE_SPACING &&
+          x + TABLE_W > obs.x    - OBSTACLE_SPACING &&
+          y < obs.y + obs.height + OBSTACLE_SPACING &&
+          y + TABLE_H > obs.y    - OBSTACLE_SPACING
+        );
+        if (!overlaps) result.push({ x, y, width: TABLE_W, height: TABLE_H });
+      }
+
+      return result;
+    }
+
+    // ─── OBSTACLE RENDERING (called once per round) ──────────────────────────
+    function renderObstacles() {
+      document.querySelectorAll('.dynamic-obstacle').forEach(el => el.remove());
+
+      cachedObstacles.forEach(obs => {
+        const el = document.createElement('div');
+        el.className = 'dynamic-obstacle';
+        Object.assign(el.style, {
+          position: 'absolute',
+          left:        obs.x + 'px',
+          top:         obs.y + 'px',
+          width:       obs.width  + 'px',
+          height:      obs.height + 'px',
+          background:  '#8b4513',
+          border:      '2px solid #654321',
+          borderRadius:'4px',
+          boxShadow:   '0 2px 4px rgba(0,0,0,0.3)',
+          zIndex:      '5',
+        });
+        const detail = document.createElement('div');
+        Object.assign(detail.style, {
+          position: 'absolute',
+          top: '3px', left: '3px', right: '3px', bottom: '3px',
+          background: '#a0522d',
+          borderRadius: '2px',
+        });
+        el.appendChild(detail);
+        gameArea.appendChild(el);
+      });
+    }
+
+    // ─── COLLISION HELPERS ────────────────────────────────────────────────────
+    /**
+     * Returns true if a square entity at (x, y) with given size
+     * overlaps any cached obstacle.
+     */
+    function collidesWithObstacle(x, y, size) {
+      return cachedObstacles.some(obs =>
+        x         < obs.x + obs.width  &&
+        x + size  > obs.x              &&
+        y         < obs.y + obs.height &&
+        y + size  > obs.y
+      );
+    }
+
+    /**
+     * Moves an entity along (deltaX, deltaY) with full wall-sliding:
+     *  1. Try both axes together (diagonal).
+     *  2. If blocked, try X only (slide along Y wall).
+     *  3. If still blocked, try Y only (slide along X wall).
+     * Clamps to game bounds on every successful axis move.
+     * Mutates entity.x / entity.y in place.
+     */
+    function moveEntity(entity, deltaX, deltaY, size) {
+      const clampX = x => Math.max(0, Math.min(GAME_WIDTH  - size, x));
+      const clampY = y => Math.max(0, Math.min(GAME_HEIGHT - size, y));
+
+      const nx = clampX(entity.x + deltaX);
+      const ny = clampY(entity.y + deltaY);
+
+      // Try full diagonal move first
+      if (!collidesWithObstacle(nx, ny, size)) {
+        entity.x = nx;
+        entity.y = ny;
+        return;
+      }
+
+      // Slide along Y (move X only)
+      if (!collidesWithObstacle(nx, entity.y, size)) {
+        entity.x = nx;
+        return;
+      }
+
+      // Slide along X (move Y only)
+      if (!collidesWithObstacle(entity.x, ny, size)) {
+        entity.y = ny;
+      }
+      // All axes blocked → entity stays put (wall corner)
+    }
+
+    /**
+     * If the donkey hasn't moved for STUCK_FRAMES consecutive frames,
+     * nudges it in a random open direction to break free.
+     */
+    const STUCK_FRAMES = 8;
+    let donkeyStuckCounter = 0;
+    let donkeyLastPos      = { x: -1, y: -1 };
+
+    function unstuckDonkey() {
+      const { donkey } = gameState;
+      const moved = Math.hypot(donkey.x - donkeyLastPos.x, donkey.y - donkeyLastPos.y) > 0.5;
+
+      if (moved) {
+        donkeyStuckCounter = 0;
+      } else {
+        donkeyStuckCounter++;
+      }
+
+      donkeyLastPos = { x: donkey.x, y: donkey.y };
+
+      if (donkeyStuckCounter >= STUCK_FRAMES) {
+        donkeyStuckCounter = 0;
+        // Try 8 cardinal + diagonal directions and take the first free one
+        const escapeAngles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4,
+                              Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4];
+        // Shuffle so the escape isn't always the same direction
+        escapeAngles.sort(() => Math.random() - 0.5);
+        const nudge = DONKEY_SPEED * 2;
+        for (const angle of escapeAngles) {
+          const ex = Math.cos(angle) * nudge;
+          const ey = Math.sin(angle) * nudge;
+          const nx = Math.max(0, Math.min(GAME_WIDTH  - DONKEY_SIZE, donkey.x + ex));
+          const ny = Math.max(0, Math.min(GAME_HEIGHT - DONKEY_SIZE, donkey.y + ey));
+          if (!collidesWithObstacle(nx, ny, DONKEY_SIZE)) {
+            donkey.x = nx;
+            donkey.y = ny;
+            // Reset direction-change timer so AI picks a fresh path immediately
+            gameState.donkeyLastDirectionChange = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    /** Returns true if player and donkey are close enough to collide. */
+    function entitiesCollide() {
+      const dist = Math.hypot(
+        gameState.player.x - gameState.donkey.x,
+        gameState.player.y - gameState.donkey.y
+      );
+      return dist < (PLAYER_SIZE + DONKEY_SIZE) / COLLISION_RADIUS_FACTOR;
+    }
+
+    // ─── INPUT HANDLING ───────────────────────────────────────────────────────
+    function handleInput() {
+      const { player } = gameState;
+      let dx = 0, dy = 0, moving = false;
+
+      if (keys['w'] || keys['arrowup']    || keys['up'])    { dy = -PLAYER_SPEED; player.direction = 'north'; moving = true; }
+      if (keys['s'] || keys['arrowdown']  || keys['down'])  { dy =  PLAYER_SPEED; player.direction = 'south'; moving = true; }
+      if (keys['a'] || keys['arrowleft']  || keys['left'])  { dx = -PLAYER_SPEED; player.direction = 'west';  moving = true; }
+      if (keys['d'] || keys['arrowright'] || keys['right']) { dx =  PLAYER_SPEED; player.direction = 'east';  moving = true; }
+
+      if (!moving) player.direction = 'start';
+
+      moveEntity(player, dx, dy, PLAYER_SIZE);
+    }
+
+    // ─── DONKEY AI ────────────────────────────────────────────────────────────
+    function findBestCover(donkey, player) {
+      const dx   = donkey.x - player.x;
+      const dy   = donkey.y - player.y;
+      const dist = Math.hypot(dx, dy);
+
+      let best      = null;
+      let bestScore = -Infinity;
+
+      for (const obs of cachedObstacles) {
+        const cx = obs.x + obs.width  / 2;
+        const cy = obs.y + obs.height / 2;
+
+        const dToObs  = Math.hypot(donkey.x - cx, donkey.y - cy);
+        const obsToP  = Math.hypot(cx - player.x, cy - player.y);
+
+        if (dToObs + obsToP >= dist * 1.5) continue;
+
+        const angleToPlayer = Math.atan2(dy, dx);
+        const angleToObs    = Math.atan2(cy - donkey.y, cx - donkey.x);
+        const angleDiff     = Math.abs(angleToPlayer - angleToObs);
+        const coverScore    = (Math.PI - angleDiff) * 100 - dToObs;
+
+        if (coverScore > bestScore) { bestScore = coverScore; best = obs; }
+      }
+      return best;
+    }
+
+    // ─── DIFFICULTY PROFILE ───────────────────────────────────────────────────
+    // Each level gets a profile that drives every aspect of the donkey's behaviour.
+    // Values are clamped so the game stays playable but keeps escalating.
+    function getDifficultyProfile(level) {
+      const L = level - 1; // 0-based for maths
+      return {
+        // ── Speed ────────────────────────────────────────────────────────────
+        // Donkey speed grows steadily; hard-capped so it's never faster than
+        // the player (PLAYER_SPEED = 5).
+        fleeSpeed:    Math.min(4.8, 2.0 + L * 0.3),
+        coverSpeed:   Math.min(4.5, 1.8 + L * 0.28),
+        wanderSpeed:  Math.min(3.5, 1.2 + L * 0.22),
+
+        // ── Awareness ────────────────────────────────────────────────────────
+        // Detection range: starts small so early levels feel forgiving.
+        detectionRange: Math.min(GAME_WIDTH * 0.9, 120 + L * 28),
+
+        // ── Reaction time ─────────────────────────────────────────────────
+        // How long (ms) between wander direction changes.
+        // Shorter = more erratic and harder to predict.
+        dirChangePeriod: Math.max(120, 520 - L * 40),
+
+        // ── Cover-seeking ─────────────────────────────────────────────────
+        // Probability [0-1] the donkey bothers to seek cover when it detects
+        // the player. Low on lvl 1 (mostly just flees), high later.
+        coverSeekChance: Math.min(0.95, 0.10 + L * 0.10),
+
+        // ── Feint: random direction reversal while fleeing ─────────────────
+        // Probability per frame that the donkey does a sudden direction change
+        // to fake out the player.
+        feintChance: Math.min(0.04, L * 0.004),
+
+        // ── Predictive fleeing ────────────────────────────────────────────
+        // Weight [0-1] toward fleeing from the player's *predicted* future
+        // position rather than current position. Makes the donkey feel smarter.
+        predictionWeight: Math.min(0.80, L * 0.08),
+
+        // ── Zigzag while fleeing ──────────────────────────────────────────
+        zigzagAmplitude: Math.min(2.5, L * 0.25),
+        zigzagFrequency: 0.012 + L * 0.002,
+
+        // ── Orbit radius when hiding behind cover ─────────────────────────
+        // Smaller = tighter hug of the table, harder to flush out.
+        coverOrbitRadius: Math.max(15, 45 - L * 3),
+      };
+    }
+
+    function updateDonkeyAI() {
+      const { donkey, player } = gameState;
+      const profile = getDifficultyProfile(gameState.level);
+      const now     = Date.now();
+
+      // ── Predict player future position ──────────────────────────────────
+      // Use last two positions to estimate player velocity (stored in gameState).
+      if (!gameState.playerPrev) gameState.playerPrev = { x: player.x, y: player.y };
+      const pvx = player.x - gameState.playerPrev.x;
+      const pvy = player.y - gameState.playerPrev.y;
+      gameState.playerPrev = { x: player.x, y: player.y };
+
+      const lookahead = 18; // frames ahead to predict
+      const predX = player.x + pvx * lookahead * profile.predictionWeight;
+      const predY = player.y + pvy * lookahead * profile.predictionWeight;
+
+      // Vector from donkey to the (possibly predicted) player position
+      const dx   = donkey.x - predX;
+      const dy   = donkey.y - predY;
+      const dist = Math.hypot(dx, dy);
+
+      // Raw dist to actual player (used for detection check)
+      const actualDist = Math.hypot(donkey.x - player.x, donkey.y - player.y);
+
+      const nearLeft   = donkey.x < CORNER_THRESHOLD;
+      const nearRight  = donkey.x > GAME_WIDTH  - DONKEY_SIZE - CORNER_THRESHOLD;
+      const nearTop    = donkey.y < CORNER_THRESHOLD;
+      const nearBottom = donkey.y > GAME_HEIGHT - DONKEY_SIZE - CORNER_THRESHOLD;
+
+      if (actualDist > 0 && actualDist < profile.detectionRange) {
+        // ════════════════════════════════════════════════════════════════════
+        // EVASION MODE — player is within detection range
+        // ════════════════════════════════════════════════════════════════════
+
+        // Feint: occasionally reverse direction for one short burst
+        if (Math.random() < profile.feintChance) {
+          moveEntity(donkey, -dx / dist * profile.fleeSpeed * 2,
+                             -dy / dist * profile.fleeSpeed * 2, DONKEY_SIZE);
+        }
+
+        const useCover = Math.random() < profile.coverSeekChance;
+        const cover    = useCover ? findBestCover(donkey, player) : null;
+
+        if (cover) {
+          // ── Seek & hide behind cover ────────────────────────────────────
+          const cx      = cover.x + cover.width  / 2;
+          const cy      = cover.y + cover.height / 2;
+          const covDx   = cx - donkey.x;
+          const covDy   = cy - donkey.y;
+          const covDist = Math.hypot(covDx, covDy);
+
+          if (covDist > profile.coverOrbitRadius) {
+            // Still approaching the cover
+            const speed = profile.coverSpeed;
+            moveEntity(donkey,
+              (covDx / covDist) * speed,
+              (covDy / covDist) * speed,
+              DONKEY_SIZE);
+          } else {
+            // At cover — orbit it perpendicularly to stay hidden
+            const perpAngle = Math.atan2(dy, dx) + Math.PI / 2;
+            const speed     = profile.coverSpeed * 0.65;
+            const prevX = donkey.x, prevY = donkey.y;
+            moveEntity(donkey,
+              Math.cos(perpAngle) * speed,
+              Math.sin(perpAngle) * speed,
+              DONKEY_SIZE);
+            if (donkey.x === prevX && donkey.y === prevY) {
+              moveEntity(donkey,
+                -Math.cos(perpAngle) * speed,
+                -Math.sin(perpAngle) * speed,
+                DONKEY_SIZE);
+            }
+          }
+        } else {
+          // ── Direct flee from (predicted) player ────────────────────────
+          let ax = dist > 0 ? (dx / dist) * profile.fleeSpeed : 0;
+          let ay = dist > 0 ? (dy / dist) * profile.fleeSpeed : 0;
+
+          // Zigzag overlay — makes path less predictable
+          ax += Math.sin(now * profile.zigzagFrequency) * profile.zigzagAmplitude;
+          ay += Math.cos(now * profile.zigzagFrequency) * profile.zigzagAmplitude;
+
+          // Wall repulsion — push away from edges so the donkey doesn't hug them
+          if (nearLeft)   ax =  Math.abs(ax) * 1.6;
+          if (nearRight)  ax = -Math.abs(ax) * 1.6;
+          if (nearTop)    ay =  Math.abs(ay) * 1.6;
+          if (nearBottom) ay = -Math.abs(ay) * 1.6;
+
+          // Corner: force a diagonal escape toward the open space
+          if ((nearLeft || nearRight) && (nearTop || nearBottom)) {
+            ax = Math.abs(ax) * (nearLeft  ? 1 : -1) * 1.3;
+            ay = Math.abs(ay) * (nearTop   ? 1 : -1) * 1.3;
+          }
+
+          moveEntity(donkey, ax, ay, DONKEY_SIZE);
+        }
+
+      } else if (actualDist > 0) {
+        // ════════════════════════════════════════════════════════════════════
+        // WANDER MODE — player is out of range
+        // ════════════════════════════════════════════════════════════════════
+        let mx, my;
+
+        if (now - gameState.donkeyLastDirectionChange > profile.dirChangePeriod) {
+          const angle = Math.random() * Math.PI * 2;
+          mx = Math.cos(angle) * profile.wanderSpeed;
+          my = Math.sin(angle) * profile.wanderSpeed;
+          gameState.donkeyLastDirectionChange = now;
+        } else {
+          mx = (Math.random() - 0.5) * profile.wanderSpeed;
+          my = (Math.random() - 0.5) * profile.wanderSpeed;
+        }
+
+        // Drift toward nearest table for cover pre-positioning
+        let nearest = null, nearestDist = Infinity;
+        for (const obs of cachedObstacles) {
+          const cx = obs.x + obs.width  / 2;
+          const cy = obs.y + obs.height / 2;
+          const d  = Math.hypot(donkey.x - cx, donkey.y - cy);
+          if (d < nearestDist && d > 40) { nearestDist = d; nearest = obs; }
+        }
+        if (nearest && Math.random() > 0.35) {
+          mx += (nearest.x + nearest.width  / 2 - donkey.x) / nearestDist * profile.wanderSpeed * 0.3;
+          my += (nearest.y + nearest.height / 2 - donkey.y) / nearestDist * profile.wanderSpeed * 0.3;
+        }
+
+        // Wall repulsion during wander too
+        if (nearLeft   && mx < 0) mx =  Math.abs(mx);
+        if (nearRight  && mx > 0) mx = -Math.abs(mx);
+        if (nearTop    && my < 0) my =  Math.abs(my);
+        if (nearBottom && my > 0) my = -Math.abs(my);
+
+        moveEntity(donkey, mx, my, DONKEY_SIZE);
+      }
+
+      // Escape if stuck against wall or obstacle corner
+      unstuckDonkey();
+
+      // Update donkey facing direction
+      gameState.donkey.direction = donkey.x > gameState.donkey.x ? 'west' : 'east';
+    }
+
+    // ─── SPRITES ──────────────────────────────────────────────────────────────
+    function plumberSprite(dir) {
+      const dirMap = { north: 'run_north', south: 'run_south', west: 'run_west', east: 'run_east', start: 'start' };
+      const file   = (dirMap[dir] || 'start') + '.gif';
+      const sz     = PLAYER_SIZE * SPRITE_SCALE;
+      const offset = -(sz - PLAYER_SIZE) / 2;
+      return `<img src="sprites/${file}" width="${sz}" height="${sz}"
+        style="image-rendering:pixelated;position:relative;left:${offset}px;top:${offset}px;" />`;
+    }
+
+    function donkeySprite(dir) {
+      const dirMap = { north: 'burro_north', south: 'burro_south', west: 'burro_west', east: 'burro_east' };
+      const file   = (dirMap[dir] || 'burro_south') + '.gif';
+      const sz     = DONKEY_SIZE * SPRITE_SCALE * DONKEY_EXTRA_SCALE;
+      const offset = -(sz - DONKEY_SIZE) / 2;
+      return `<img src="sprites/${file}" width="${sz}" height="${sz}"
+        style="image-rendering:pixelated;position:relative;left:${offset}px;top:${offset}px;" />`;
+    }
+
+    function burgerSprite() {
+      const sz = DONKEY_SIZE * 0.7;
+      return `<img src="sprites/burguer.png" width="${sz}" height="${sz}"
+        style="image-rendering:pixelated;" />`;
+    }
+
+    // ─── PARTICLE BURST ───────────────────────────────────────────────────────
+    function spawnParticles(x, y) {
+      const colors = ['#ff6b6b', '#ffeb3b', '#4caf50', '#ff9900', '#fff'];
+      for (let i = 0; i < 12; i++) {
+        const p   = document.createElement('div');
+        p.className = 'particle';
+        const angle = (i / 12) * Math.PI * 2;
+        const dist  = 40 + Math.random() * 40;
+        p.style.setProperty('--tx', Math.cos(angle) * dist + 'px');
+        p.style.setProperty('--ty', Math.sin(angle) * dist + 'px');
+        p.style.background = colors[i % colors.length];
+        p.style.left = (x + DONKEY_SIZE / 2) + 'px';
+        p.style.top  = (y + DONKEY_SIZE / 2) + 'px';
+        gameArea.appendChild(p);
+        setTimeout(() => p.remove(), 650);
+      }
+    }
+
+    // ─── RENDER ───────────────────────────────────────────────────────────────
+    function render() {
+      const { player, donkey, isCaught } = gameState;
+
+      playerEl.style.left = player.x + 'px';
+      playerEl.style.top  = player.y + 'px';
+      playerEl.innerHTML  = plumberSprite(player.direction);
+
+      donkeyEl.style.left = donkey.x + 'px';
+      donkeyEl.style.top  = donkey.y + 'px';
+      donkeyEl.innerHTML  = isCaught ? burgerSprite() : donkeySprite(donkey.direction);
+    }
+
+    // ─── TIMER ────────────────────────────────────────────────────────────────
+    function startTimer() {
+      startTime = Date.now();
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(tickTimer, 100);
+    }
+
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    }
+
+    function tickTimer() {
+      if (!gameState.gameActive || gameState.isCaught) return;
+      gameState.elapsedTime = (Date.now() - startTime) / 1000;
+
+      if (gameState.elapsedTime >= TIME_LIMIT_S) {
+        stopTimer();
+        gameState.isCaught = true;
+        onTimeUp();
+        return;
+      }
+
+      const remaining = Math.max(0, TIME_LIMIT_S - gameState.elapsedTime);
+      timerEl.textContent = remaining.toFixed(1) + 's';
+      timerEl.style.color = remaining <= 10 ? '#ff4444' : remaining <= 20 ? '#ff9900' : '#ff6b6b';
+    }
+
+    function onTimeUp() {
+      console.log(`=== TIEMPO AGOTADO ===`);
+      console.log(`Presiones tecla: ${gameState.keyPresses}`);
+      messageEl.innerHTML = `¡TIEMPO AGOTADO!<br>Perdiste este nivel<br>Presiones: ${gameState.keyPresses}<br>Intenta de nuevo`;
+      messageEl.style.display = 'block';
+      setTimeout(resetGame, 3000);
+    }
+
+    // ─── MAIN UPDATE LOOP ─────────────────────────────────────────────────────
+    function update() {
+      if (!gameState.gameActive || gameState.isCaught) return;
+
+      handleInput();
+      updateDonkeyAI();
+
+      if (entitiesCollide()) {
+        onCatch();
+      } else {
+        render();
+      }
+    }
+
+    function onCatch() {
+      gameState.lastPlayerDirection = gameState.player.direction;
+      gameState.isCaught   = true;
+      gameState.gameActive = false;
+      stopTimer();
+
+      // Score: accumulated time minus key penalties
+      const roundMs      = Math.floor(gameState.elapsedTime * 1000);
+      const keyPenalty   = gameState.keyPresses * KEY_PENALTY_MS;
+      gameState.totalTime += roundMs;
+      gameState.score     = Math.max(0, gameState.totalTime - keyPenalty);
+
+      console.log(`=== NIVEL ${gameState.level} COMPLETADO ===`);
+      console.log(`Tiempo: ${roundMs}ms`);
+      console.log(`Presiones tecla: ${gameState.keyPresses} → penalización: ${keyPenalty}ms`);
+      console.log(`Score ronda: ${roundMs - keyPenalty}ms | Score total: ${gameState.score}ms`);
+      console.log(`===========================================`);
+
+      scoreEl.textContent = gameState.score;
+      gameState.level++;
+      levelEl.textContent = gameState.level;
+
+      // Persist progress (cleared on page refresh via sessionStorage)
+      sessionStorage.setItem('burroBurgerScore', gameState.score);
+      sessionStorage.setItem('burroBurgerLevel', gameState.level);
+
+      // Visual feedback: particles + transformation animation
+      spawnParticles(gameState.donkey.x, gameState.donkey.y);
+      donkeyEl.classList.add('transforming');
+      donkeyEl.addEventListener('animationend', () => donkeyEl.classList.remove('transforming'), { once: true });
+
+      render(); // show burger immediately after particles
+      setTimeout(resetGame, 700);
+    }
+
+    // ─── COUNTDOWN ───────────────────────────────────────────────────────────
+    function showCountdown(callback) {
+      gameState.gameActive = false;
+      let count = 3;
+      Object.assign(countdownEl.style, {
+        display:   'block',
+        position:  'absolute',
+        top:       '50%',
+        left:      '50%',
+        transform: 'translate(-50%,-50%)',
+        fontSize:  '72px',
+        fontWeight:'bold',
+        color:     '#ff6b6b',
+        textShadow:'3px 3px 0 #8b0000',
+        zIndex:    '100',
+      });
+      countdownEl.textContent = count;
+
+      const interval = setInterval(() => {
+        count--;
+        if (count > 0) {
+          countdownEl.textContent = count;
+        } else if (count === 0) {
+          countdownEl.textContent = 'GO!';
+        } else {
+          clearInterval(interval);
+          countdownEl.style.display = 'none';
+          gameState.gameActive = true;
+          if (callback) callback();
+        }
+      }, 800);
+    }
+
+    // ─── RESET / INIT ────────────────────────────────────────────────────────
+    window.resetGame = function() {
+      updateDimensions();
+      applyLevelColors();
+
+      // Rebuild obstacle cache once per round
+      cachedObstacles = buildObstacles();
+      renderObstacles();
+
+      // Find valid player spawn near centre
+      const cx = GAME_WIDTH / 2, cy = GAME_HEIGHT / 2;
+      let pX = cx - 80, pY = cy;
+      for (let i = 0; i < 20 && collidesWithObstacle(pX, pY, PLAYER_SIZE); i++) {
+        pX = cx - 80 + (Math.random() - 0.5) * 100;
+        pY = cy      + (Math.random() - 0.5) * 100;
+      }
+
+      // Find valid donkey spawn anywhere (min 100 px from player)
+      let dX = cx + 80, dY = cy;
+      let placed = false;
+      for (let i = 0; i < 50 && !placed; i++) {
+        const tx = 60 + Math.random() * (GAME_WIDTH  - 120 - DONKEY_SIZE);
+        const ty = 60 + Math.random() * (GAME_HEIGHT - 120 - DONKEY_SIZE);
+        if (!collidesWithObstacle(tx, ty, DONKEY_SIZE) &&
+            Math.hypot(tx - pX, ty - pY) > 100) {
+          dX = tx; dY = ty; placed = true;
+        }
+      }
+      if (!placed) {
+        const angle = Math.random() * Math.PI * 2;
+        dX = Math.max(60, Math.min(GAME_WIDTH  - DONKEY_SIZE - 60, cx + Math.cos(angle) * 150));
+        dY = Math.max(60, Math.min(GAME_HEIGHT - DONKEY_SIZE - 60, cy + Math.sin(angle) * 150));
+      }
+
+      gameState.player      = { x: pX, y: pY, direction: 'start' };
+      gameState.donkey      = { x: dX, y: dY, direction: 'left'  };
+      gameState.isCaught    = false;
+      gameState.elapsedTime = 0;
+      gameState.keyPresses  = 0;
+      gameState.donkeyLastDirectionChange = Date.now();
+      donkeyStuckCounter    = 0;
+      donkeyLastPos         = { x: -1, y: -1 };
+      gameState.playerPrev  = null;
+
+      messageEl.style.display = 'none';
+      timerEl.textContent     = TIME_LIMIT_S.toFixed(1) + 's';
+      timerEl.style.color     = '#ff6b6b';
+
+      render();
+      showCountdown(() => startTimer());
+    };
+
+    // ─── INPUT LISTENERS ─────────────────────────────────────────────────────
+    window.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      if (!keys[k] && gameState.gameActive) gameState.keyPresses++;
+      keys[k] = true;
+    });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    document.querySelectorAll('.control-btn').forEach(btn => {
+      const dir = btn.dataset.dir;
+      const press = () => {
+        if (!keys[dir] && gameState.gameActive) gameState.keyPresses++;
+        keys[dir] = true;
+      };
+      const release = () => { keys[dir] = false; };
+      btn.addEventListener('touchstart',  e => { e.preventDefault(); press(); },   { passive: false });
+      btn.addEventListener('touchend',    e => { e.preventDefault(); release(); }, { passive: false });
+      btn.addEventListener('mousedown',   press);
+      btn.addEventListener('mouseup',     release);
+      btn.addEventListener('mouseleave',  release);
+    });
+
+    // ─── BOOT ────────────────────────────────────────────────────────────────
+    window.addEventListener('load', () => {
+      // Refresh resets all progress — clear any leftover session data
+      sessionStorage.removeItem('burroBurgerScore');
+      sessionStorage.removeItem('burroBurgerLevel');
+
+      gameState.level      = 1;
+      gameState.score      = 0;
+      gameState.totalTime  = 0;
+      gameState.keyPresses = 0;
+      levelEl.textContent  = 1;
+      scoreEl.textContent  = 0;
+
+      updateDimensions();
+      resetGame();
+      setInterval(update, 16);
+    });
+  </script>
+</body>
+</html>
