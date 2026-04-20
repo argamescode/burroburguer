@@ -378,6 +378,7 @@
       elapsedTime: 0,
       lastPlayerDirection: 'start',
       donkeyLastDirectionChange: 0,
+      waitingNextLevel: false,
     };
 
     let cachedObstacles = [];
@@ -643,37 +644,28 @@
     // All speeds boosted, detection range wider, cover-seeking more aggressive,
     // feints and zigzag more frequent, prediction stronger.
     function getDifficultyProfile(level) {
-      const L = level - 1;
-      return {
-        // Speeds — harder baseline, caps slightly above player speed
-        fleeSpeed:    Math.min(5.2, 2.8 + L * 0.35),
-        coverSpeed:   Math.min(4.9, 2.5 + L * 0.32),
-        wanderSpeed:  Math.min(4.0, 1.8 + L * 0.25),
+  const L = level - 1;
+  return {
+    fleeSpeed:    Math.min(6.2, 3.5 + L * 0.45), // más rápido
+    coverSpeed:   Math.min(5.8, 3.2 + L * 0.4),
+    wanderSpeed:  Math.min(4.5, 2.2 + L * 0.3),
 
-        // Detection: starts much wider so early levels are already challenging
-        detectionRange: Math.min(GAME_WIDTH * 0.95, 220 + L * 40),
+    detectionRange: Math.min(GAME_WIDTH, 300 + L * 60), // detecta desde más lejos
 
-        // Direction change period: snappier at all levels
-        dirChangePeriod: Math.max(80, 400 - L * 38),
+    dirChangePeriod: Math.max(60, 300 - L * 45), // reacciona más rápido
 
-        // Cover-seeking: high chance even on level 1
-        coverSeekChance: Math.min(0.97, 0.40 + L * 0.07),
+    coverSeekChance: Math.min(0.99, 0.55 + L * 0.08),
 
-        // Feints: more frequent
-        feintChance: Math.min(0.06, 0.008 + L * 0.006),
+    feintChance: Math.min(0.12, 0.02 + L * 0.01), // engaños más frecuentes
 
-        // Prediction: meaningful from level 1
-        predictionWeight: Math.min(0.90, 0.25 + L * 0.08),
+    predictionWeight: Math.min(1.0, 0.4 + L * 0.1),
 
-        // Zigzag: more noticeable from the start
-        zigzagAmplitude: Math.min(3.2, 0.8 + L * 0.28),
-        zigzagFrequency: 0.015 + L * 0.003,
+    zigzagAmplitude: Math.min(4.5, 1.5 + L * 0.4),
+    zigzagFrequency: 0.02 + L * 0.004,
 
-        // Tighter orbit so the donkey really hides behind cover
-        coverOrbitRadius: Math.max(10, 38 - L * 3),
-      };
-    }
-
+    coverOrbitRadius: Math.max(8, 30 - L * 3),
+  };
+}
     function updateDonkeyAI() {
       const { donkey, player } = gameState;
       const profile = getDifficultyProfile(gameState.level);
@@ -896,50 +888,74 @@
     }
 
     function onTimeUp() {
-      messageEl.innerHTML = `¡TIEMPO AGOTADO!<br>Perdiste este nivel<br>Presiones: ${gameState.keyPresses}<br>Intenta de nuevo`;
-      messageEl.style.display = 'block';
-      setTimeout(resetGame, 3000);
-    }
+  gameState.gameActive = false;
+  gameState.waitingNextLevel = true;
 
+  messageEl.innerHTML = `
+    ⏱️ ¡TIEMPO AGOTADO!<br>
+    <button id="retryBtn">Reintentar</button>
+  `;
+  messageEl.style.display = 'block';
+
+  document.getElementById('retryBtn').onclick = () => {
+    gameState.waitingNextLevel = false;
+    resetGame();
+  };
+}
     // ─── MAIN UPDATE LOOP ─────────────────────────────────────────────────────
     function update() {
-      if (!gameState.gameActive || gameState.isCaught) return;
+  if (!gameState.gameActive || gameState.isCaught || gameState.waitingNextLevel) return;
 
-      handleInput();
-      updateDonkeyAI();
+  handleInput();
+  updateDonkeyAI();
 
-      if (entitiesCollide()) {
-        onCatch();
-      } else {
-        render();
-      }
-    }
+  if (entitiesCollide()) {
+    onCatch();
+  } else {
+    render();
+  }
+}
 
-    function onCatch() {
-      gameState.lastPlayerDirection = gameState.player.direction;
-      gameState.isCaught   = true;
-      gameState.gameActive = false;
-      stopTimer();
+   function onCatch() {
+  gameState.lastPlayerDirection = gameState.player.direction;
+  gameState.isCaught   = true;
+  gameState.gameActive = false;
+  gameState.waitingNextLevel = true; // 👈 NUEVO
 
-      const roundMs      = Math.floor(gameState.elapsedTime * 1000);
-      const keyPenalty   = gameState.keyPresses * KEY_PENALTY_MS;
-      gameState.totalTime += roundMs;
-      gameState.score     = Math.max(0, gameState.totalTime - keyPenalty);
+  stopTimer();
 
-      scoreEl.textContent = gameState.score;
-      gameState.level++;
-      levelEl.textContent = gameState.level;
+  const roundMs      = Math.floor(gameState.elapsedTime * 1000);
+  const keyPenalty   = gameState.keyPresses * KEY_PENALTY_MS;
+  gameState.totalTime += roundMs;
+  gameState.score     = Math.max(0, gameState.totalTime - keyPenalty);
 
-      sessionStorage.setItem('burroBurgerScore', gameState.score);
-      sessionStorage.setItem('burroBurgerLevel', gameState.level);
+  scoreEl.textContent = gameState.score;
 
-      spawnParticles(gameState.donkey.x, gameState.donkey.y);
-      donkeyEl.classList.add('transforming');
-      donkeyEl.addEventListener('animationend', () => donkeyEl.classList.remove('transforming'), { once: true });
+  spawnParticles(gameState.donkey.x, gameState.donkey.y);
 
-      render();
-      setTimeout(resetGame, 1500);
-    }
+  donkeyEl.classList.add('transforming');
+  donkeyEl.addEventListener('animationend', () => {
+    donkeyEl.classList.remove('transforming');
+  }, { once: true });
+
+  render();
+
+  // 👇 MENSAJE CON BOTÓN
+  messageEl.innerHTML = `
+    🎉 ¡ATRAPASTE AL BURRO!<br>
+    Nivel completado<br><br>
+    <button id="nextLevelBtn">Siguiente nivel</button>
+  `;
+  messageEl.style.display = 'block';
+
+  document.getElementById('nextLevelBtn').onclick = () => {
+    gameState.level++;
+    levelEl.textContent = gameState.level;
+
+    gameState.waitingNextLevel = false;
+    resetGame();
+  };
+}
 
     // ─── COUNTDOWN ───────────────────────────────────────────────────────────
     function showCountdown(callback) {
