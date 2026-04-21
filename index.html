@@ -474,14 +474,13 @@
       const timerEl = document.getElementById("timer");
       const levelEl = document.getElementById("level");
       const countdownEl = document.getElementById("countdown");
-      
-      
+
       let GAME_WIDTH = 0,
         GAME_HEIGHT = 0;
       let PLAYER_SIZE = 50,
         DONKEY_SIZE = 55;
       let PLAYER_SPEED = 5,
-        DONKEY_SPEED = 4;
+        DONKEY_SPEED = 5; // Más rápido para mayor desafío
 
       let gameState = {
         player: { x: 50, y: 50, direction: "start" },
@@ -834,17 +833,17 @@
         }
         const L = level + 1;
         cachedDifficultyProfile = {
-          fleeSpeed: Math.min(6.2, 3.5 + L * 0.75),
-          coverSpeed: Math.min(5.8, 3.2 + L * 0.7),
-          wanderSpeed: Math.min(4.5, 2.2 + L * 0.5),
-          detectionRange: Math.min(GAME_WIDTH, 300 + L * 60),
-          dirChangePeriod: Math.max(60, 300 - L * 75),
-          coverSeekChance: Math.min(0.99, 0.55 + L * 0.08),
-          feintChance: Math.min(0.12, 0.02 + L * 0.01),
-          predictionWeight: Math.min(1.0, 0.4 + L * 0.1),
-          zigzagAmplitude: Math.min(4.5, 1.5 + L * 0.4),
-          zigzagFrequency: 0.02 + L * 0.004,
-          coverOrbitRadius: Math.max(8, 30 - L * 3),
+          fleeSpeed: Math.min(8.5, 4.5 + L * 1.0), // Más rápido para huir
+          coverSpeed: Math.min(7.2, 4.0 + L * 0.9), // Más rápido buscando cobertura
+          wanderSpeed: Math.min(5.5, 2.8 + L * 0.06), // Más rápido deambulando
+          detectionRange: Math.min(GAME_WIDTH, 400 + L * 80), // Detecta desde más lejos
+          dirChangePeriod: Math.max(40, 250 - L * 30), // Cambia dirección más rápido
+          coverSeekChance: Math.min(0.99, 0.65 + L * 0.1), // Busca cobertura más agresivamente
+          feintChance: Math.min(0.2, 0.05 + L * 0.025), // Más engaños
+          predictionWeight: Math.min(1.2, 0.5 + L * 0.12), // Mejor predicción del jugador
+          zigzagAmplitude: Math.min(6.0, 2.0 + L * 0.5), // Movimiento más errático
+          zigzagFrequency: 0.03 + L * 0.006, // Zigzag más frecuente
+          coverOrbitRadius: Math.max(6, 25 - L * 2), // Órbita más ajustada
         };
         lastDifficultyLevel = level;
         return cachedDifficultyProfile;
@@ -867,7 +866,7 @@
         const playerDx = player.x - donkey.x;
         const playerDy = player.y - donkey.y;
         const actualDist = Math.hypot(playerDx, playerDy);
-        
+
         const predX = player.x + pvx * 22 * profile.predictionWeight;
         const predY = player.y + pvy * 22 * profile.predictionWeight;
         const dx = donkey.x - predX;
@@ -994,9 +993,14 @@
           ddy = donkey.y - prevDonkeyY;
         // Only update direction if movement is significant (> 1.5px) to throttle sprite changes
         if (Math.abs(ddx) + Math.abs(ddy) > 1.5) {
-          const newDir = Math.abs(ddx) >= Math.abs(ddy)
-            ? (ddx > 0 ? "east" : "west")
-            : (ddy > 0 ? "south" : "north");
+          const newDir =
+            Math.abs(ddx) >= Math.abs(ddy)
+              ? ddx > 0
+                ? "east"
+                : "west"
+              : ddy > 0
+                ? "south"
+                : "north";
           // Only change if direction actually changed
           if (newDir !== donkey.direction) {
             donkey.direction = newDir;
@@ -1069,10 +1073,16 @@
       }
 
       // ─── PARTICLES ───────────────────────────────────────────────────────────
-      const PARTICLE_COLORS = ["#ff6b6b", "#ffeb3b", "#4caf50", "#ff9900", "#fff"];
+      const PARTICLE_COLORS = [
+        "#ff6b6b",
+        "#ffeb3b",
+        "#4caf50",
+        "#ff9900",
+        "#fff",
+      ];
       const PI_2 = Math.PI * 2;
       const PARTICLE_COUNT = 12;
-      
+
       function spawnParticles(x, y) {
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const p = document.createElement("div");
@@ -1116,8 +1126,9 @@
           Math.abs(donkey.y - lastRender.dk_y) > RENDER_POS_THRESHOLD;
         const dkDirChanged = donkey.direction !== lastRender.dkdir;
         const dkCaughtChanged = isCaught !== lastRender.caught;
-        const dkChanged = force || dkPosChanged || dkDirChanged || dkCaughtChanged;
-        
+        const dkChanged =
+          force || dkPosChanged || dkDirChanged || dkCaughtChanged;
+
         if (pChanged) {
           playerEl.style.left = player.x + "px";
           playerEl.style.top = player.y + "px";
@@ -1156,7 +1167,7 @@
 
       // Cache last timer color to avoid unnecessary style updates
       let lastTimerColor = TIMER_COLORS.default;
-      
+
       function tickTimer() {
         if (!gameState.gameActive || gameState.isCaught) return;
         gameState.elapsedTime = (Date.now() - startTime) / 1000;
@@ -1168,7 +1179,12 @@
         }
         const r = Math.max(0, TIME_LIMIT_S - gameState.elapsedTime);
         timerEl.textContent = r.toFixed(1) + "s";
-        const newColor = r <= 10 ? TIMER_COLORS.danger : r <= 20 ? TIMER_COLORS.warning : TIMER_COLORS.default;
+        const newColor =
+          r <= 10
+            ? TIMER_COLORS.danger
+            : r <= 20
+              ? TIMER_COLORS.warning
+              : TIMER_COLORS.default;
         if (newColor !== lastTimerColor) {
           timerEl.style.color = newColor;
           lastTimerColor = newColor;
@@ -1388,7 +1404,7 @@
       window.addEventListener("keyup", (e) => {
         keys[e.key.toLowerCase()] = false;
       });
-      
+
       // Cache mobile control buttons setup
       const setupMobileControls = () => {
         document.querySelectorAll(".control-btn").forEach((btn) => {
