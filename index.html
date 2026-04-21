@@ -374,6 +374,38 @@
       const DONKEY_EXTRA_SCALE = 1.25;
       const SPRITE_SCALE = 1.5;
 
+      // ─── SPRITE MAPPINGS (shared constants) ───────────────────────────────────
+      const SPRITE_MAP_PLAYER = {
+        north: "run_north",
+        south: "run_south",
+        west: "run_west",
+        east: "run_east",
+        start: "start",
+      };
+      const SPRITE_MAP_DONKEY = {
+        north: "burro_north",
+        south: "burro_south",
+        west: "burro_west",
+        east: "burro_east",
+      };
+      // ─── TIMER COLOR THRESHOLDS ────────────────────────────────────────────
+      const TIMER_COLORS = {
+        danger: "#ff4444",
+        warning: "#ff9900",
+        default: "#ff6b6b",
+      };
+      // ─── UNSTUCK ANGLES (pre-calculated) ────────────────────────────────────
+      const UNSTUCK_ANGLES = [
+        0,
+        Math.PI / 4,
+        Math.PI / 2,
+        (3 * Math.PI) / 4,
+        Math.PI,
+        (5 * Math.PI) / 4,
+        (3 * Math.PI) / 2,
+        (7 * Math.PI) / 4,
+      ];
+
       const LEVEL_PALETTES = [
         {
           floor: "#e8d5b7",
@@ -433,6 +465,7 @@
         },
       ];
 
+      // Cache DOM elements and constants
       const gameArea = document.getElementById("game-area");
       const playerEl = document.getElementById("player");
       const donkeyEl = document.getElementById("donkey");
@@ -441,7 +474,8 @@
       const timerEl = document.getElementById("timer");
       const levelEl = document.getElementById("level");
       const countdownEl = document.getElementById("countdown");
-
+      
+      
       let GAME_WIDTH = 0,
         GAME_HEIGHT = 0;
       let PLAYER_SIZE = 50,
@@ -468,6 +502,8 @@
       let startTime = 0,
         timerInterval = null,
         keys = {};
+      let lastDifficultyLevel = -1,
+        cachedDifficultyProfile = null;
 
       // ─── DIMENSIONS ──────────────────────────────────────────────────────────
       function updateDimensions() {
@@ -549,9 +585,11 @@
       }
 
       function renderObstacles() {
-        document
-          .querySelectorAll(".dynamic-obstacle")
-          .forEach((el) => el.remove());
+        // Remove all existing obstacles efficiently
+        const existing = gameArea.querySelectorAll(".dynamic-obstacle");
+        for (let i = existing.length - 1; i >= 0; i--) {
+          existing[i].remove();
+        }
         cachedObstacles.forEach((obs) => {
           const el = document.createElement("div");
           el.className = "dynamic-obstacle";
@@ -687,16 +725,14 @@
         donkeyLastPos = { x: donkey.x, y: donkey.y };
         if (donkeyStuckCounter >= STUCK_FRAMES) {
           donkeyStuckCounter = 0;
-          const angles = [
-            0,
-            Math.PI / 4,
-            Math.PI / 2,
-            (3 * Math.PI) / 4,
-            Math.PI,
-            (5 * Math.PI) / 4,
-            (3 * Math.PI) / 2,
-            (7 * Math.PI) / 4,
-          ].sort(() => Math.random() - 0.5);
+          // Shuffle angles in-place (Fisher-Yates) for better performance
+          const angles = UNSTUCK_ANGLES.slice();
+          for (let i = angles.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const temp = angles[i];
+            angles[i] = angles[j];
+            angles[j] = temp;
+          }
           const nudge = DONKEY_SPEED * 3;
           for (const a of angles) {
             const nx = Math.max(
@@ -739,22 +775,22 @@
         let dx = 0,
           dy = 0,
           moving = false;
+        // Check vertical movement
         if (keys["w"] || keys["arrowup"] || keys["up"]) {
           dy = -PLAYER_SPEED;
           player.direction = "north";
           moving = true;
-        }
-        if (keys["s"] || keys["arrowdown"] || keys["down"]) {
+        } else if (keys["s"] || keys["arrowdown"] || keys["down"]) {
           dy = PLAYER_SPEED;
           player.direction = "south";
           moving = true;
         }
+        // Check horizontal movement
         if (keys["a"] || keys["arrowleft"] || keys["left"]) {
           dx = -PLAYER_SPEED;
           player.direction = "west";
           moving = true;
-        }
-        if (keys["d"] || keys["arrowright"] || keys["right"]) {
+        } else if (keys["d"] || keys["arrowright"] || keys["right"]) {
           dx = PLAYER_SPEED;
           player.direction = "east";
           moving = true;
@@ -792,8 +828,12 @@
       }
 
       function getDifficultyProfile(level) {
+        // Cache difficulty profile to avoid recalculating every frame
+        if (level === lastDifficultyLevel) {
+          return cachedDifficultyProfile;
+        }
         const L = level + 1;
-        return {
+        cachedDifficultyProfile = {
           fleeSpeed: Math.min(6.2, 3.5 + L * 0.75),
           coverSpeed: Math.min(5.8, 3.2 + L * 0.7),
           wanderSpeed: Math.min(4.5, 2.2 + L * 0.5),
@@ -806,6 +846,8 @@
           zigzagFrequency: 0.02 + L * 0.004,
           coverOrbitRadius: Math.max(8, 30 - L * 3),
         };
+        lastDifficultyLevel = level;
+        return cachedDifficultyProfile;
       }
 
       function updateDonkeyAI() {
@@ -821,13 +863,16 @@
         const pvy = player.y - gameState.playerPrev.y;
         gameState.playerPrev = { x: player.x, y: player.y };
 
+        // Pre-calculate distances once
+        const playerDx = player.x - donkey.x;
+        const playerDy = player.y - donkey.y;
+        const actualDist = Math.hypot(playerDx, playerDy);
+        
         const predX = player.x + pvx * 22 * profile.predictionWeight;
         const predY = player.y + pvy * 22 * profile.predictionWeight;
-
-        const dx = donkey.x - predX,
-          dy = donkey.y - predY;
+        const dx = donkey.x - predX;
+        const dy = donkey.y - predY;
         const dist = Math.hypot(dx, dy);
-        const actualDist = Math.hypot(donkey.x - player.x, donkey.y - player.y);
 
         const nearLeft = donkey.x < CORNER_THRESHOLD;
         const nearRight =
@@ -947,11 +992,14 @@
         unstuckDonkey();
         const ddx = donkey.x - prevDonkeyX,
           ddy = donkey.y - prevDonkeyY;
-        if (Math.abs(ddx) + Math.abs(ddy) > 0.3) {
-          if (Math.abs(ddx) >= Math.abs(ddy)) {
-            gameState.donkey.direction = ddx > 0 ? "east" : "west";
-          } else {
-            gameState.donkey.direction = ddy > 0 ? "south" : "north";
+        // Only update direction if movement is significant (> 1.5px) to throttle sprite changes
+        if (Math.abs(ddx) + Math.abs(ddy) > 1.5) {
+          const newDir = Math.abs(ddx) >= Math.abs(ddy)
+            ? (ddx > 0 ? "east" : "west")
+            : (ddy > 0 ? "south" : "north");
+          // Only change if direction actually changed
+          if (newDir !== donkey.direction) {
+            donkey.direction = newDir;
           }
         }
       }
@@ -981,24 +1029,19 @@
         ensureImgs();
         const file = celebrating
           ? "celebrate.gif"
-          : ({
-              north: "run_north",
-              south: "run_south",
-              west: "run_west",
-              east: "run_east",
-              start: "start",
-            }[dir] || "start") + ".gif";
+          : (SPRITE_MAP_PLAYER[dir] || "start") + ".gif";
         const src = "sprites/" + file;
         const sz = PLAYER_SIZE * SPRITE_SCALE;
         const off = -(sz - PLAYER_SIZE) / 2;
+        // Only update if src actually changed
         if (playerImg.dataset.src !== src) {
           playerImg.src = src;
           playerImg.dataset.src = src;
+          playerImg.width = sz;
+          playerImg.height = sz;
+          playerImg.style.left = off + "px";
+          playerImg.style.top = off + "px";
         }
-        playerImg.width = sz;
-        playerImg.height = sz;
-        playerImg.style.left = off + "px";
-        playerImg.style.top = off + "px";
       }
 
       function updateDonkeySprite(dir, caught = false) {
@@ -1007,40 +1050,38 @@
         if (caught) {
           src = "sprites/burguer.png";
         } else {
-          const file =
-            ({
-              north: "burro_north",
-              south: "burro_south",
-              west: "burro_west",
-              east: "burro_east",
-            }[dir] || "burro_south") + ".gif";
+          const file = (SPRITE_MAP_DONKEY[dir] || "burro_south") + ".gif";
           src = "sprites/" + file;
         }
         const sz = caught
           ? DONKEY_SIZE * 0.7
           : DONKEY_SIZE * SPRITE_SCALE * DONKEY_EXTRA_SCALE;
         const off = caught ? 0 : -(sz - DONKEY_SIZE) / 2;
+        // Only update if src actually changed
         if (donkeyImg.dataset.src !== src) {
           donkeyImg.src = src;
           donkeyImg.dataset.src = src;
+          donkeyImg.width = sz;
+          donkeyImg.height = sz;
+          donkeyImg.style.left = off + "px";
+          donkeyImg.style.top = off + "px";
         }
-        donkeyImg.width = sz;
-        donkeyImg.height = sz;
-        donkeyImg.style.left = off + "px";
-        donkeyImg.style.top = off + "px";
       }
 
       // ─── PARTICLES ───────────────────────────────────────────────────────────
+      const PARTICLE_COLORS = ["#ff6b6b", "#ffeb3b", "#4caf50", "#ff9900", "#fff"];
+      const PI_2 = Math.PI * 2;
+      const PARTICLE_COUNT = 12;
+      
       function spawnParticles(x, y) {
-        const colors = ["#ff6b6b", "#ffeb3b", "#4caf50", "#ff9900", "#fff"];
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
           const p = document.createElement("div");
           p.className = "particle";
-          const angle = (i / 12) * Math.PI * 2,
+          const angle = (i / PARTICLE_COUNT) * PI_2,
             dist = 40 + Math.random() * 40;
           p.style.setProperty("--tx", Math.cos(angle) * dist + "px");
           p.style.setProperty("--ty", Math.sin(angle) * dist + "px");
-          p.style.background = colors[i % colors.length];
+          p.style.background = PARTICLE_COLORS[i % PARTICLE_COLORS.length];
           p.style.left = x + DONKEY_SIZE / 2 + "px";
           p.style.top = y + DONKEY_SIZE / 2 + "px";
           gameArea.appendChild(p);
@@ -1050,6 +1091,8 @@
 
       // ─── RENDER ───────────────────────────────────────────────────────────────
       // Last-rendered state — render() is a no-op when nothing changed.
+      // Position threshold prevents re-rendering for sub-pixel movements
+      const RENDER_POS_THRESHOLD = 10;
       const lastRender = {
         px: -1,
         py: -1,
@@ -1064,16 +1107,17 @@
         const { player, donkey, isCaught } = gameState;
         const pChanged =
           force ||
-          player.x !== lastRender.px ||
-          player.y !== lastRender.py ||
+          Math.abs(player.x - lastRender.px) > RENDER_POS_THRESHOLD ||
+          Math.abs(player.y - lastRender.py) > RENDER_POS_THRESHOLD ||
           player.direction !== lastRender.pdir ||
           isCaught !== lastRender.caught;
-        const dkChanged =
-          force ||
-          donkey.x !== lastRender.dk_x ||
-          donkey.y !== lastRender.dk_y ||
-          donkey.direction !== lastRender.dkdir ||
-          isCaught !== lastRender.caught;
+        const dkPosChanged =
+          Math.abs(donkey.x - lastRender.dk_x) > RENDER_POS_THRESHOLD ||
+          Math.abs(donkey.y - lastRender.dk_y) > RENDER_POS_THRESHOLD;
+        const dkDirChanged = donkey.direction !== lastRender.dkdir;
+        const dkCaughtChanged = isCaught !== lastRender.caught;
+        const dkChanged = force || dkPosChanged || dkDirChanged || dkCaughtChanged;
+        
         if (pChanged) {
           playerEl.style.left = player.x + "px";
           playerEl.style.top = player.y + "px";
@@ -1083,12 +1127,16 @@
           lastRender.pdir = player.direction;
         }
         if (dkChanged) {
-          donkeyEl.style.left = donkey.x + "px";
-          donkeyEl.style.top = donkey.y + "px";
-          updateDonkeySprite(donkey.direction, isCaught);
-          lastRender.dk_x = donkey.x;
-          lastRender.dk_y = donkey.y;
-          lastRender.dkdir = donkey.direction;
+          if (dkPosChanged) {
+            donkeyEl.style.left = donkey.x + "px";
+            donkeyEl.style.top = donkey.y + "px";
+            lastRender.dk_x = donkey.x;
+            lastRender.dk_y = donkey.y;
+          }
+          if (force || dkDirChanged || dkCaughtChanged) {
+            updateDonkeySprite(donkey.direction, isCaught);
+            lastRender.dkdir = donkey.direction;
+          }
         }
         if (pChanged || dkChanged) lastRender.caught = isCaught;
       }
@@ -1106,6 +1154,9 @@
         }
       }
 
+      // Cache last timer color to avoid unnecessary style updates
+      let lastTimerColor = TIMER_COLORS.default;
+      
       function tickTimer() {
         if (!gameState.gameActive || gameState.isCaught) return;
         gameState.elapsedTime = (Date.now() - startTime) / 1000;
@@ -1117,8 +1168,11 @@
         }
         const r = Math.max(0, TIME_LIMIT_S - gameState.elapsedTime);
         timerEl.textContent = r.toFixed(1) + "s";
-        timerEl.style.color =
-          r <= 10 ? "#ff4444" : r <= 20 ? "#ff9900" : "#ff6b6b";
+        const newColor = r <= 10 ? TIMER_COLORS.danger : r <= 20 ? TIMER_COLORS.warning : TIMER_COLORS.default;
+        if (newColor !== lastTimerColor) {
+          timerEl.style.color = newColor;
+          lastTimerColor = newColor;
+        }
       }
 
       function onTimeUp() {
@@ -1263,7 +1317,8 @@
         gameState.playerPrev = null;
         messageEl.style.display = "none";
         timerEl.textContent = TIME_LIMIT_S.toFixed(1) + "s";
-        timerEl.style.color = "#ff6b6b";
+        timerEl.style.color = TIMER_COLORS.default;
+        lastTimerColor = TIMER_COLORS.default;
         // Reset persistent sprite elements and render cache
         playerEl.innerHTML = "";
         playerImg = null;
@@ -1333,35 +1388,40 @@
       window.addEventListener("keyup", (e) => {
         keys[e.key.toLowerCase()] = false;
       });
-      document.querySelectorAll(".control-btn").forEach((btn) => {
-        const dir = btn.dataset.dir;
-        const press = () => {
-          if (!keys[dir] && gameState.gameActive) gameState.keyPresses++;
-          keys[dir] = true;
-        };
-        const release = () => {
-          keys[dir] = false;
-        };
-        btn.addEventListener(
-          "touchstart",
-          (e) => {
-            e.preventDefault();
-            press();
-          },
-          { passive: false },
-        );
-        btn.addEventListener(
-          "touchend",
-          (e) => {
-            e.preventDefault();
-            release();
-          },
-          { passive: false },
-        );
-        btn.addEventListener("mousedown", press);
-        btn.addEventListener("mouseup", release);
-        btn.addEventListener("mouseleave", release);
-      });
+      
+      // Cache mobile control buttons setup
+      const setupMobileControls = () => {
+        document.querySelectorAll(".control-btn").forEach((btn) => {
+          const dir = btn.dataset.dir;
+          const press = () => {
+            if (!keys[dir] && gameState.gameActive) gameState.keyPresses++;
+            keys[dir] = true;
+          };
+          const release = () => {
+            keys[dir] = false;
+          };
+          btn.addEventListener(
+            "touchstart",
+            (e) => {
+              e.preventDefault();
+              press();
+            },
+            { passive: false },
+          );
+          btn.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              release();
+            },
+            { passive: false },
+          );
+          btn.addEventListener("mousedown", press);
+          btn.addEventListener("mouseup", release);
+          btn.addEventListener("mouseleave", release);
+        });
+      };
+      setupMobileControls();
 
       // ─── BOOT ────────────────────────────────────────────────────────────────
       window.addEventListener("load", () => {
